@@ -5,7 +5,7 @@ from charms.reactive import hook
 from charms.reactive import RelationBase
 from charms.reactive import scopes
 from charmhelpers.core import hookenv
-from charmhelpers.core.hookenv import log, service_name
+from charmhelpers.core.hookenv import log
 from charmhelpers.contrib.network.ip import format_ipv6_addr
 
 from charmhelpers.contrib.storage.linux.ceph import (
@@ -24,7 +24,6 @@ class CephClient(RelationBase):
     def joined(self):
         self.set_remote(key='mds-name', value=socket.gethostname())
         self.set_state('{relation_name}.connected')
-        self.initialize_mds(name=service_name())
 
     @hook('{requires:ceph-mds}-relation-{changed,departed}')
     def changed(self):
@@ -57,24 +56,103 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.connected')
         self.remove_state('{relation_name}.pools.available')
 
-    def initialize_mds(self, name, replicas=3):
+    def initialize_mds(self, name, **kwargs):
         """
         Request pool setup and mds creation
 
         @param name: name of mds pools to create
-        @param replicas: number of replicas for supporting pools
+        @param pool-type: replicated or erasure pool
+        @param replicas: number of replicas for replicated pools
+        @param profile: The erasure profile to use or create
+        @param weight: the percent_data charmhelpers uses to calculate pg num
+        @param erasure-type: erasure algorithim for erasure pool
+        @param failure-domain: erasure failure domain
+        @param k: erasure data chunks
+        @param m: erasure encoding chunks
+        @param l: erasure locality
         """
         # json.dumps of the CephBrokerRq()
         json_rq = self.get_local(key='broker_req')
 
         if not json_rq:
             rq = CephBrokerRq()
-            rq.add_op_create_pool(name="{}_data".format(name),
-                                  replica_count=replicas,
-                                  weight=None)
-            rq.add_op_create_pool(name="{}_metadata".format(name),
-                                  replica_count=replicas,
-                                  weight=None)
+            replicas = kwargs.get('replicas', 3)
+            profile = kwargs.get('profile', 'default')
+            # Create data pool
+            if kwargs.get('pool-type') == 'erasure':
+                if profile != 'default':
+                    # Verify required inputs for cusotm profile
+                    if kwargs.get('erasure-type') is None or\
+                       kwargs.get('failure-domain') is None or\
+                       kwargs.get('k') is None or\
+                       kwargs.get('m') is None:
+                        raise ValueError('Creating erasure profile requires'
+                                         ' erasure-type, failure-domain, k, and'
+                                         ' m')
+                    rq.ops.append({
+                        'op': 'create-erasure-profile',
+                        'erasure-type': kwargs.get('erasure-type'),
+                        'failure-domain': kwargs.get('failure-domain'),
+                        'name': profile,
+                        'k': kwargs.get('k'),
+                        'm': kwargs.get('m'),
+                        'l': kwargs.get('l'),
+                    })
+                rq.ops.append({
+                    'op': 'create-pool',
+                    'pool-type': kwargs.get('pool-type'),
+                    'name': "{}_data".format(name),
+                    'erasure-profile': profile,
+                    'weight': kwargs.get('weight'),
+                    'app-name': 'cephfs',
+                })
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'allow_ec_overwrites',
+                    'value': True,
+                })
+            else:
+                # Default to replicated pool
+                rq.ops.append({
+                    'op': 'create-pool',
+                    'name': "{}_metadata".format(name),
+                    'replicas': replicas,
+                    'weight': kwargs.get('weight'),
+                    'app-name': 'cephfs',
+                })
+
+            if kwargs.get('compression-mode'):
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'compression_mode',
+                    'value': kwargs.get('compression-mode'),
+                })
+
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'compression_algorithm',
+                    'value': kwargs.get('compression-algorithm'),
+                })
+
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'compression_required_ratio',
+                    'value': kwargs.get('compression-required-ratio'),
+                })
+
+            # Create metadata pool
+            rq.ops.append({
+                'op': 'create-pool',
+                'name': "{}_metadata".format(name),
+                'replicas': replicas,
+                'weight': kwargs.get('weight'),
+                'app-name': 'cephfs',
+            })
+
             # Create CephFS
             rq.ops.append({
                 'op': 'create-cephfs',
