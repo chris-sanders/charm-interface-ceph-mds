@@ -1,3 +1,4 @@
+# TEST ME
 import json
 import socket
 
@@ -24,7 +25,8 @@ class CephClient(RelationBase):
     def joined(self):
         self.set_remote(key='mds-name', value=socket.gethostname())
         self.set_state('{relation_name}.connected')
-        self.initialize_mds(name=service_name())
+        if not self.is_state('{relation_name}.custom.init'):
+            self.initialize_mds(name=service_name())
 
     @hook('{requires:ceph-mds}-relation-{changed,departed}')
     def changed(self):
