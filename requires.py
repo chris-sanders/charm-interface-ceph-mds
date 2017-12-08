@@ -5,6 +5,7 @@ import socket
 from charms.reactive import hook
 from charms.reactive import RelationBase
 from charms.reactive import scopes
+from charms.reactive import is_state
 from charmhelpers.core import hookenv
 from charmhelpers.core.hookenv import log, service_name
 from charmhelpers.contrib.network.ip import format_ipv6_addr
@@ -25,7 +26,8 @@ class CephClient(RelationBase):
     def joined(self):
         self.set_remote(key='mds-name', value=socket.gethostname())
         self.set_state('{relation_name}.connected')
-        if not self.is_state('{relation_name}.custom.init'):
+        if not is_state('ceph-mds.custom.init'):
+            log('Using default init', level='debug')
             self.initialize_mds(name=service_name())
 
     @hook('{requires:ceph-mds}-relation-{changed,departed}')
@@ -96,6 +98,7 @@ class CephClient(RelationBase):
             except ValueError as err:
                 log("Unable to decode broker_req: {}.  Error: {}".format(
                     json_rq, err))
+        self.set_state('{relation_name}.initialized')
 
     def get_remote_all(self, key, default=None):
         """Return a list of all values presented by remote units for key"""
