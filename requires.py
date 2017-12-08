@@ -4,6 +4,7 @@ import socket
 from charms.reactive import hook
 from charms.reactive import RelationBase
 from charms.reactive import scopes
+from charms.reactive import is_state
 from charmhelpers.core import hookenv
 from charmhelpers.core.hookenv import log, service_name
 from charmhelpers.contrib.network.ip import format_ipv6_addr
@@ -24,7 +25,9 @@ class CephClient(RelationBase):
     def joined(self):
         self.set_remote(key='mds-name', value=socket.gethostname())
         self.set_state('{relation_name}.connected')
-        self.initialize_mds(name=service_name())
+        if not is_state('ceph-mds.custom.init'):
+            log('Using default init', level='debug')
+            self.initialize_mds(name=service_name())
 
     @hook('{requires:ceph-mds}-relation-{changed,departed}')
     def changed(self):
@@ -56,8 +59,11 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.available')
         self.remove_state('{relation_name}.connected')
         self.remove_state('{relation_name}.pools.available')
+        self.remove_state('{relation_name}.initialized')
+        self.remove_state('cephfs.configured')
 
-    def initialize_mds(self, name, replicas=3):
+    def initialize_mds(self, name, replicas=3, pool_type=None, weight=None,
+                       config_flags=None):
         """
         Request pool setup and mds creation
 
@@ -69,12 +75,64 @@ class CephClient(RelationBase):
 
         if not json_rq:
             rq = CephBrokerRq()
-            rq.add_op_create_pool(name="{}_data".format(name),
-                                  replica_count=replicas,
-                                  weight=None)
+            # Create data pool
+            if pool_type == 'erasure':
+                if config_flags.get('profile') != 'default':
+                    rq.ops.append({
+                        'op': 'create-erasure-profile',
+                        'erasure-type': config_flags.get('erasure-type'),
+                        'failure-domain': config_flags.get('failure-domain'),
+                        'name': config_flags.get('profile'),
+                        'k': config_flags.get('k'),
+                        'm': config_flags.get('m'),
+                        'l': config_flags.get('l'),
+                    })
+
+                rq.ops.append({
+                    'op': 'create-pool',
+                    'pool-type': pool_type,
+                    'name': "{}_data".format(name),
+                    'erasure-profile': config_flags.get('profile'),
+                    'weight': weight,
+                })
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'allow_ec_overwrites',
+                    'value': True,
+                })
+            else:
+                rq.add_op_create_pool(name="{}_data".format(name),
+                                      replica_count=replicas,
+                                      weight=weight)
+
+            if config_flags.get('compression-mode'):
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'compression_mode',
+                    'value': config_flags.get('compression-mode'),
+                })
+
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'compression_algorithm',
+                    'value': config_flags.get('compression-algorithm'),
+                })
+
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'compression_required_ratio',
+                    'value': config_flags.get('compression-required-ratio'),
+                })
+
+            # Create metadata pool
             rq.add_op_create_pool(name="{}_metadata".format(name),
                                   replica_count=replicas,
-                                  weight=None)
+                                  weight=weight)
+
             # Create CephFS
             rq.ops.append({
                 'op': 'create-cephfs',
@@ -94,6 +152,7 @@ class CephClient(RelationBase):
             except ValueError as err:
                 log("Unable to decode broker_req: {}.  Error: {}".format(
                     json_rq, err))
+        self.set_state('{relation_name}.initialized')
 
     def get_remote_all(self, key, default=None):
         """Return a list of all values presented by remote units for key"""
