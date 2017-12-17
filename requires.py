@@ -61,7 +61,8 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.connected')
         self.remove_state('{relation_name}.pools.available')
 
-    def initialize_mds(self, name, replicas=3):
+    def initialize_mds(self, name, replicas=3, pool_type=None, weight=None,
+                       erasure_config=None):
         """
         Request pool setup and mds creation
 
@@ -73,12 +74,40 @@ class CephClient(RelationBase):
 
         if not json_rq:
             rq = CephBrokerRq()
-            rq.add_op_create_pool(name="{}_data".format(name),
-                                  replica_count=replicas,
-                                  weight=None)
+            # Create data pool
+            if pool_type == 'erasure':
+                if erasure_config.get('profile') != 'default':
+                    rq.ops.append({
+                        'op': 'create-erasure-profile',
+                        'erasure-type': erasure_config.get('erasure-type'),
+                        'failure-domain': erasure_config.get('failure-domain'),
+                        'name': erasure_config.get('profile'),
+                        'k': erasure_config.get('k'),
+                        'm': erasure_config.get('m'),
+                        'l': erasure_config.get('l'),
+                    })
+
+                rq.ops.append({
+                    'op': 'create-pool',
+                    'pool-type': pool_type,
+                    'name': "{}_data".format(name),
+                    'erasure-profile': erasure_config.get('profile'),
+                    'weight': weight,
+                })
+                rq.ops.append({
+                    'op': 'set-pool-value',
+                    'name': '{}_data'.format(name),
+                    'key': 'allow_ec_overwrites',
+                    'value': 'true',
+                })
+            else:
+                rq.add_op_create_pool(name="{}_data".format(name),
+                                      replica_count=replicas,
+                                      weight=weight)
+            # Create metadata pool
             rq.add_op_create_pool(name="{}_metadata".format(name),
                                   replica_count=replicas,
-                                  weight=None)
+                                  weight=weight)
             # Create CephFS
             rq.ops.append({
                 'op': 'create-cephfs',
