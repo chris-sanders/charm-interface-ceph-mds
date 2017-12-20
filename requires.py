@@ -62,7 +62,7 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.pools.available')
 
     def initialize_mds(self, name, replicas=3, pool_type=None, weight=None,
-                       erasure_config=None):
+                       config_flags=None):
         """
         Request pool setup and mds creation
 
@@ -76,22 +76,22 @@ class CephClient(RelationBase):
             rq = CephBrokerRq()
             # Create data pool
             if pool_type == 'erasure':
-                if erasure_config.get('profile') != 'default':
+                if config_flags.get('profile') != 'default':
                     rq.ops.append({
                         'op': 'create-erasure-profile',
-                        'erasure-type': erasure_config.get('erasure-type'),
-                        'failure-domain': erasure_config.get('failure-domain'),
-                        'name': erasure_config.get('profile'),
-                        'k': erasure_config.get('k'),
-                        'm': erasure_config.get('m'),
-                        'l': erasure_config.get('l'),
+                        'erasure-type': config_flags.get('erasure-type'),
+                        'failure-domain': config_flags.get('failure-domain'),
+                        'name': config_flags.get('profile'),
+                        'k': config_flags.get('k'),
+                        'm': config_flags.get('m'),
+                        'l': config_flags.get('l'),
                     })
 
                 rq.ops.append({
                     'op': 'create-pool',
                     'pool-type': pool_type,
                     'name': "{}_data".format(name),
-                    'erasure-profile': erasure_config.get('profile'),
+                    'erasure-profile': config_flags.get('profile'),
                     'weight': weight,
                 })
                 rq.ops.append({
