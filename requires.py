@@ -60,6 +60,10 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.available')
         self.remove_state('{relation_name}.connected')
         self.remove_state('{relation_name}.pools.available')
+        self.remove_state('{relation_name}.initialized')
+        self.remove_state('cephfs.configured')
+        self.set_local(key='broker_req', value=None)
+
 
     def initialize_mds(self, name, replicas=3, pool_type=None, weight=None,
                        config_flags=None):
@@ -98,7 +102,7 @@ class CephClient(RelationBase):
                     'op': 'set-pool-value',
                     'name': '{}_data'.format(name),
                     'key': 'allow_ec_overwrites',
-                    'value': 'true',
+                    'value': True,
                 })
             else:
                 rq.add_op_create_pool(name="{}_data".format(name),
