@@ -1,4 +1,3 @@
-# TEST ME
 import json
 import socket
 
