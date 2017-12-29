@@ -32,6 +32,7 @@ class CephClient(RelationBase):
     @hook('{requires:ceph-mds}-relation-{changed,departed}')
     def changed(self):
         data = {
+            'mds-key': self.mds_key(),  # This is to support old relations that aren't host aware
             'mds-key-{}'.format(socket.gethostname()): self.mds_key(),
             'fsid': self.fsid(),
             'auth': self.auth(),
