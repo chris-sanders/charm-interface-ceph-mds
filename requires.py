@@ -58,6 +58,7 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.connected')
         self.remove_state('{relation_name}.pools.available')
         self.remove_state('ceph-mds.custom.init')
+        self.set_local(key='broker_req', value=None)
 
     def mds_key(self):
         return self.get_remote('mds-key-{}'.format(socket.gethostname()))
