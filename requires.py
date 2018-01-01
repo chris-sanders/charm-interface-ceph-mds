@@ -61,8 +61,6 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.pools.available')
         self.remove_state('{relation_name}.initialized')
         self.remove_state('cephfs.configured')
-        self.set_local(key='broker_req', value=None)
-
 
     def initialize_mds(self, name, replicas=3, pool_type=None, weight=None,
                        config_flags=None):
