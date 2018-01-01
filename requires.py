@@ -128,14 +128,6 @@ class CephClient(RelationBase):
                     'value': config_flags.get('compression-required-ratio'),
                 })
 
-            if config_flags.get('earsure-algorithm'):
-                rq.ops.append({
-                    'op': 'set-pool-value',
-                    'name': '{}_data'.format(name),
-                    'key': 'compression_mode',
-                    'value': 'aggressive',
-                })
-
             # Create metadata pool
             rq.add_op_create_pool(name="{}_metadata".format(name),
                                   replica_count=replicas,
