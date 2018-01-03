@@ -17,9 +17,9 @@ from charmhelpers.contrib.storage.linux.ceph import (
 
 
 class CephClient(RelationBase):
-    scope = scopes.GLOBAL
+    scope = scopes.UNIT
 
-    auto_accessors = ['mds_key', 'fsid', 'auth']
+    auto_accessors = ['fsid', 'auth']
 
     @hook('{requires:ceph-mds}-relation-{joined}')
     def joined(self):
@@ -32,7 +32,8 @@ class CephClient(RelationBase):
     @hook('{requires:ceph-mds}-relation-{changed,departed}')
     def changed(self):
         data = {
-            'mds_key': self.mds_key(),
+            'mds-key': self.mds_key(),  # This is to support old relations that aren't host aware
+            'mds-key-{}'.format(socket.gethostname()): self.mds_key(),
             'fsid': self.fsid(),
             'auth': self.auth(),
             'mon_hosts': self.mon_hosts()
@@ -61,6 +62,11 @@ class CephClient(RelationBase):
         self.remove_state('{relation_name}.pools.available')
         self.remove_state('{relation_name}.initialized')
         self.remove_state('cephfs.configured')
+        self.remove_state('ceph-mds.custom.init')
+        self.set_local(key='broker_req', value=None)
+
+    def mds_key(self):
+        return self.get_remote('mds-key-{}'.format(socket.gethostname()))
 
     def initialize_mds(self, name, replicas=3, pool_type=None, weight=None,
                        config_flags=None):
