@@ -88,6 +88,7 @@ class CephClient(RelationBase):
                     'name': "{}_data".format(name),
                     'erasure-profile': config_flags.get('profile'),
                     'weight': weight,
+                    'app-name': 'cephfs',
                 })
                 rq.ops.append({
                     'op': 'set-pool-value',
@@ -123,9 +124,13 @@ class CephClient(RelationBase):
                 })
 
             # Create metadata pool
-            rq.add_op_create_pool(name="{}_metadata".format(name),
-                                  replica_count=replicas,
-                                  weight=weight)
+            rq.ops.append({
+                'op': 'create-pool',
+                'name': "{}_metadata".format(name),
+                'replicas': replicas,
+                'weight': weight,
+                'app-name': 'cephfs',
+            })
 
             # Create CephFS
             rq.ops.append({
